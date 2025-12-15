@@ -1,0 +1,28 @@
+[project]
+name = "filter-support"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "frenbox@gmail.com",email = "frenbox.ss@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "superphot-plus @ git+https://github.com/VTDA-Group/superphot-plus.git",
+    "snapi @ git+https://github.com/kdesoto-astro/snapi.git",
+    "astropy (>=7.2.0,<8.0.0)",
+    "jax (==0.5)",
+    "numpyro (>=0.19.0,<0.20.0)",
+    "dynesty (>=3.0.0,<4.0.0)",
+    "pymongo (>=4.15.5,<5.0.0)",
+    "fastavro (>=1.12.1,<2.0.0)",
+    "confluent-kafka (>=2.12.2,<3.0.0)",
+    "cramjam (>=2.11.0,<3.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "external_models", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
