@@ -2,6 +2,8 @@ import io
 from datetime import datetime
 
 from pymongo import MongoClient
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 import pandas as pd
 import numpy as np
 from astropy.coordinates import SkyCoord
@@ -13,12 +15,51 @@ from superphot_plus.priors import SuperphotPrior
 from superphot_plus.model import SuperphotLightGBM
 import matplotlib.pyplot as plt
 
-from snapi import Photometry, Formatter, SamplerResult, transient
+from snapi import Photometry, Formatter
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
 
 import warnings
 from sklearn.exceptions import InconsistentVersionWarning
 
 warnings.simplefilter("ignore", category=InconsistentVersionWarning)
+
+# Load .env from home directory
+# Reading mongodb password
+load_dotenv(Path.home() / ".env")
+
+def post_image_to_slack(file_path, channel_id, message=""):
+    """
+    Post an image to a Slack channel.
+
+    Args:
+        file_path (str): Path to the image file to upload.
+        channel_id (str): Slack channel ID (e.g., 'C0123456789').
+        message (str, optional): Message to accompany the image. Defaults to "".
+
+    Returns:
+        bool: True if successful, False otherwise.
+    """
+    token = os.getenv("SLACK_BOT_TOKEN")
+    if not token:
+        print("SLACK_BOT_TOKEN not found in environment variables")
+        return False
+
+    client = WebClient(token=token)
+
+    try:
+        response = client.files_upload_v2(
+            channel=channel_id,
+            file=file_path,
+            initial_comment=message
+        )
+        print(f"Image posted to Slack: {response['file']['permalink']}")
+        return True
+    except SlackApiError as e:
+        print(f"Slack error: {e.response['error']}")
+        return False
 
 
 def fetch_mongo(collection_name, url="mongodb://localhost:27017", db_name="boom"):
@@ -34,6 +75,18 @@ def fetch_mongo(collection_name, url="mongodb://localhost:27017", db_name="boom"
         pymongo.collection.Collection or None: The MongoDB collection object if it exists,
             None otherwise.
     """
+    
+    if url is None:
+        user = os.getenv("BOOM_DATABASE__USERNAME")
+        password = os.getenv("BOOM_DATABASE__PASSWORD")
+        host = "localhost"
+        port = "27017"
+        
+        if user and password:
+            url = f"mongodb://{user}:{password}@localhost:27017"
+        else:
+            url = f"mongodb://{host}:{port}"
+    
     db = MongoClient(url)[db_name]
     if collection_name not in db.list_collection_names():
         return None
@@ -163,6 +216,9 @@ def run_superphot(ztf_id):
     """
     # Fetch ZTF photometry
     cand_info = fetch_mongo("ZTF_alerts_aux").find_one({"_id": str(ztf_id)})
+    if cand_info is None:
+        print(f"No data found for {ztf_id}")
+        return
     df_ztf = process_photometry(cand_info, "ZTF")
     
     # Attempt to fetch and combine LSST photometry if available
@@ -195,7 +251,7 @@ def run_superphot(ztf_id):
     df_final['filt_width'] = np.where(df_final['filter'] == 'r', 1553.43, 1317.15)
     df_final['filter'] = np.where(df_final['filter'] == 'r', 'ZTF_r', 'ZTF_g')
     df_final['zeropoint'] = 23.90  # AB mag
-    df_final['upperlimit'] = False
+    df_final['upper_limit'] = False
 
     # Create SNAPI photometry object
     phot = Photometry(df_final)
@@ -207,6 +263,7 @@ def run_superphot(ztf_id):
         new_lcs.append(lc)
 
     phot = Photometry.from_light_curves(new_lcs)
+    phot.upper_limit = False
     
     # Phase and truncate light curves
     phot.phase(inplace=True)
@@ -248,11 +305,15 @@ def run_superphot(ztf_id):
     priors = SuperphotPrior.load('../../data/models/global_priors_hier_svi')
     random_seed = 42
 
-    svi_sampler = SVISampler(
-        priors=priors,
-        num_iter=10_000,
-        random_state=random_seed
-    )
+    try:
+        svi_sampler = SVISampler(
+            priors=priors,
+            num_iter=3000,
+            random_state=random_seed)
+    except:
+        print("Problems with SVI Sampler. Skipping event")
+        return
+    
 
     svi_sampler.fit_photometry(padded_phot, orig_num_times=orig_size)
     res = svi_sampler.result
@@ -340,6 +401,12 @@ def run_superphot(ztf_id):
         )
         plt.savefig(f"superphot_results/{ztf_id}_superphot.png")
 
+        # Post to Slack if channel is configured
+        slack_channel = os.getenv("SLACK_CHANNEL_ID")
+        if slack_channel:
+            post_image_to_slack(
+                f"superphot_results/{ztf_id}_superphot.png",
+                channel_id=slack_channel,
+                message=f"Superphot results for {ztf_id}: {event_dict['superphot_plus_class']} (prob: {event_dict['superphot_plus_prob']})"
+            )
     return None
-
-# run_superphot('ZTF18abwnucp')

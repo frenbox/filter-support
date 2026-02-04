@@ -1,12 +1,11 @@
 import os
-import time
 import json
 
 import io
 import fastavro
 
 from confluent_kafka import Consumer
-from dotenv import load_dotenv
+
 from superphot_boom import run_superphot
 def read_avro(msg):
     """
@@ -28,8 +27,8 @@ def read_avro(msg):
 
 consumer = Consumer({
     'bootstrap.servers': 'localhost:9092',
-    'group.id': f'umn_boom_kafka_consumer_group_{int(time.time())}',
-    'auto.offset.reset': 'earliest',
+    'group.id': 'umn_boom_kafka_consumer_group_superphot',
+    'auto.offset.reset': 'latest',
     "enable.auto.commit": False,  # Disable auto-commit of offsets
     "session.timeout.ms": 6000,  # Session timeout for the consumer
     "max.poll.interval.ms": 300000,  # Maximum time between polls
@@ -52,8 +51,7 @@ def consume():
         while True:
             msg = consumer.poll(timeout=10.0)
             if msg is None:
-                print(f"No {'more ' if alerts else ''}messages available, exiting")
-                break
+                continue
             if msg.error():
                 print(f"Consumer error: {msg.error()}")
                 continue
@@ -72,14 +70,13 @@ def consume():
             for passed_filter in record["filters"]:
                 if passed_filter["filter_name"] == "fast_transient_ztf":
                     run_superphot(ztf_id)
+                    consumer.commit(message=msg)
                     alerts += 1
 
     except KeyboardInterrupt:
-        pass
+        print("\nShutting down...")
     finally:
         print(f"Processed {alerts} messages")
         consumer.close()
-
-    consumer.close()
 
 consume()
