@@ -269,6 +269,11 @@ def run_superphot(ztf_id):
     phot.phase(inplace=True)
     phot.truncate(min_t=-50., max_t=100.)
 
+    # Check if we have valid detections after truncation
+    if phot.detections.empty or phot.detections['flux'].dropna().empty:
+        print(f"No valid detections after truncation for {ztf_id}")
+        return
+
     # Apply Milky Way extinction correction
     phot.correct_extinction(
         coordinates=SkyCoord(ra=92.44 * u.deg, dec=35.7 * u.deg),
