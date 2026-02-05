@@ -289,6 +289,13 @@ def run_superphot(ztf_id):
     # Normalize photometry
     phot.normalize(inplace=True)
 
+    # Check that both filters still have data after normalization
+    for filt in phot._unique_filters:
+        filt_data = phot.detections[phot.detections['filter'] == filt]
+        if filt_data.empty:
+            print(f"Filter {filt} has no data after normalization for {ztf_id}")
+            return
+
     # Pad light curves to nearest power of 2 for model input
     padded_lcs = []
     orig_size = len(phot.detections)
