@@ -28,7 +28,7 @@ def read_avro(msg):
 consumer = Consumer({
     'bootstrap.servers': 'localhost:9092',
     'group.id': 'umn_boom_kafka_consumer_group_superphot',
-    'auto.offset.reset': 'latest',
+    'auto.offset.reset': 'earliest',
     "enable.auto.commit": False,  # Disable auto-commit of offsets
     "session.timeout.ms": 6000,  # Session timeout for the consumer
     "max.poll.interval.ms": 300000,  # Maximum time between polls
@@ -51,6 +51,7 @@ def consume():
         while True:
             msg = consumer.poll(timeout=10.0)
             if msg is None:
+                print("No messages")
                 continue
             if msg.error():
                 print(f"Consumer error: {msg.error()}")
@@ -68,11 +69,13 @@ def consume():
 
             ztf_id = record["objectId"]
             for passed_filter in record["filters"]:
-                if passed_filter["filter_name"] == "fast_transient_ztf":
+                print(passed_filter["filter_name"])
+                if "crossmatch_ztf_ned" in passed_filter["filter_name"]:
                     run_superphot(ztf_id)
-                    consumer.commit(message=msg)
+                else:
+                    print(f"{alerts} alert didnt pass")
                     alerts += 1
-
+            consumer.commit(message=msg)
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:

@@ -9,7 +9,7 @@ import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 import dustmaps.sfd
-dustmaps.sfd.fetch()
+# dustmaps.sfd.fetch()
 from superphot_plus.samplers.numpyro_sampler import SVISampler
 from superphot_plus.priors import SuperphotPrior
 from superphot_plus.model import SuperphotLightGBM
